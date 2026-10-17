@@ -1,0 +1,417 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#176b5c"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Saving for Future"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png">
+<meta name="robots" content="noindex"><title>Saving for Future</title>
+<style>
+:root{--bg:#f5f6f2;--surface:#fff;--fg:#1b2531;--muted:#576372;--line:#d6dbd4;--accent:#176b5c;--accent-fg:#fff;--ghost:#e7ecf2;--green:#1f7a3d;--red:#b71c1c;--orange:#e8790c;--font:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121820;--surface:#1b2430;--fg:#e9eef3;--muted:#9eabb9;--line:#2d3946;--accent:#4cc2a8;--accent-fg:#0d1a2a;--ghost:#26323f;--green:#2f9a55;--red:#d03a3a;--orange:#ff9a3d}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.45 var(--font)}
+main{max-width:520px;margin:0 auto;padding:16px 16px 48px}
+h1{font-size:1.7rem;line-height:1.2;margin:8px 0 10px}h2{font-size:1.3rem;margin:0 0 8px}
+.hint{color:var(--muted);margin:0 0 12px}.note{color:var(--muted);font-size:.95rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 14px}
+.card.warn,.warn{border-color:var(--orange)}p.warn{color:var(--fg);border:2px solid var(--orange);border-radius:10px;padding:10px}
+.fld{margin:0 0 12px}.fld label{display:block;font-weight:700;margin:0 0 4px}
+input,select,textarea{width:100%;font:inherit;padding:12px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg)}
+input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.err{color:var(--red);font-weight:700;min-height:1.2em;margin:0 0 8px}
+.stack{display:flex;flex-direction:column;gap:10px}
+button,.btn{font:inherit;font-weight:700;padding:14px 16px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-fg);cursor:pointer;min-height:48px;text-align:center}
+button.green{background:var(--green);color:#fff}button.ghost,.btn.ghost{background:var(--ghost);color:var(--fg)}button.danger{background:var(--red);color:#fff}
+.row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}.row>*{min-width:0;overflow-wrap:anywhere}.row>b{text-align:right}h1,h2,p,.hint,.note{overflow-wrap:anywhere}.row:last-child{border-bottom:0}
+.big{font-size:2rem;font-weight:800;line-height:1.1}.good{color:var(--green)}.bad{color:var(--red)}
+.bar{height:16px;background:var(--ghost);border-radius:8px;overflow:hidden;margin:6px 0}.bar>i{display:block;height:100%;background:var(--green)}.bar>i.neg{background:var(--red)}
+.good2{color:var(--green);font-weight:700}input[type=file]{padding:10px}input[type=file]::file-selector-button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:8px 12px;margin-right:10px;background:var(--ghost);color:var(--fg)}details{margin-top:10px}summary{cursor:pointer;font-weight:700;padding:8px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style></head><body><main id="app"></main>
+<script>
+(function(){
+'use strict';
+var VERSION='1.3',KEY='savingFuture.v1',BUDGET_URL='https://gindisandbox.github.io/Simple-Budget/',FAMILY_URL='https://gindisandbox.github.io/Family-Money-Apps/',BILLS_URL='https://gindisandbox.github.io/Simple-Bills/',SAVE_NAME='Savings (pay yourself first)';
+var FREQ={week:52/12,'2week':26/12,semi:2,month:1};
+var app=document.getElementById('app');
+function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function lsSet(k,v){try{localStorage.setItem(k,v);return true;}catch(e){return false;}}
+function h(tag,attrs){var e=document.createElement(tag);attrs=attrs||{};
+  for(var k in attrs){if(attrs[k]===undefined)continue;if(k==='text')e.textContent=attrs[k];else if(k==='onclick')e.onclick=attrs[k];else if(k==='class')e.className=attrs[k];else e.setAttribute(k,attrs[k]);}
+  (function add(c){if(c==null||c===false)return;if(Array.isArray(c))c.forEach(add);else e.append(c.nodeType?c:document.createTextNode(String(c)));})(Array.prototype.slice.call(arguments,2));return e;}
+function objs(a){return Array.isArray(a)?a.filter(function(x){return x&&typeof x==='object';}):[];}
+function localDate(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function dateText(iso){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||'');if(!m)return iso||'';return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2])-1]+' '+Number(m[3])+', '+m[1];}
+var notice=null;
+function showNotice(){if(notice){app.append(h('p',{class:notice.bad?'warn':'good2',role:'status',text:notice.msg}));notice=null;}}
+function say(el,msg,good){el.className=good?'good2':'err';el.textContent=msg;}
+function uid(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36);}
+function money(x){return (Math.round(x||0)).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});}
+function parseNum(s){s=String(s==null?'':s).replace(/[$%\s]/g,'');if(/^\d+,\d{1,2}$/.test(s))s=s.replace(',','.');else s=s.replace(/,/g,'');if(s===''||!/^(\d+\.?\d*|\.\d+)$/.test(s))return null;var v=Number(s);return(isFinite(v)&&v>=0&&v<=1e10)?v:null;}
+function num(x){x=Number(x);return(isFinite(x)&&x>=0&&x<=1e10)?x:0;}
+function str(x,n){return String(x==null?'':x).slice(0,n);}
+/* ---------- math (tested) ---------- */
+function monthsUntil(ym,now){var m=/^(\d{4})-(\d{2})$/.exec(ym||'');if(!m)return null;now=now||new Date();return (Number(m[1])-now.getFullYear())*12+(Number(m[2])-(now.getMonth()+1));}
+function neededMonthly(target,saved,n,apr){var gap=target-saved;if(gap<=0)return 0;n=Math.max(1,n);var r=(apr||0)/1200;
+  if(r<1e-9)return gap/n;var g=Math.pow(1+r,n);return Math.max(0,(target-saved*g)*r/(g-1));}
+function futureValue(start,monthly,apr,years){var n=Math.round(years*12),r=(apr||0)/1200;if(r<1e-9)return start+monthly*n;var g=Math.pow(1+r,n);return start*g+monthly*(g-1)/r;}
+function budgetSummary(b){var inc=0,exp=0,dp=0,sav=0,debts=[];
+  objs(b.incomes).slice(0,200).forEach(function(i){inc+=num(i.amount)*(FREQ[i.freq]||1);});
+  objs(b.expenses).slice(0,200).concat(objs(b.extras).slice(0,200)).forEach(function(e){exp+=num(e.amount);if(e.name===SAVE_NAME)sav+=num(e.amount);});
+  objs(b.debts).slice(0,60).forEach(function(d){dp+=num(d.payment);debts.push({name:str(d.name||d.type||'Debt',60),owed:num(d.owed),apr:num(d.apr),payment:num(d.payment)});});
+  return {id:str(b.id,40)||uid(),name:str(b.name,60)||'Budget',inc:inc,exp:exp,debtPay:dp,savings:sav,debts:debts,saved:localDate()};}
+function leftOver(s){return s.inc-s.exp-s.debtPay;}
+function availFor(s){return leftOver(s)+(s.savings||0);}
+function ymNow(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);}
+function monthLabel(ym){var m=/^(\d{4})-(0[1-9]|1[0-2])$/.exec(ym||'');if(!m)return '';return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2])-1]+' '+m[1];}
+/* ---------- data ---------- */
+var db=blank();
+function blank(){return {budgets:[],cur:'',assets:[],goals:[],efMonths:3,efSaved:0,efCosts:0,efPlan:null,payExtra:0,nwEF:false,nwGoals:false,hist:[],wi:{start:null,monthly:null,rate:0,years:10}};}
+function clean(o){var d=blank();if(!o||typeof o!=='object')return d;
+  d.budgets=objs(o.budgets).slice(0,20).map(function(s){return {id:str(s.id,40)||uid(),name:str(s.name,60)||'Budget',inc:num(s.inc),exp:num(s.exp),debtPay:num(s.debtPay),savings:num(s.savings),saved:str(s.saved,10),
+    debts:objs(s.debts).slice(0,60).map(function(x){return {name:str(x.name,60),owed:num(x.owed),apr:num(x.apr),payment:num(x.payment)};})};});
+  d.cur=str(o.cur,40);
+  d.assets=objs(o.assets).slice(0,100).map(function(a){return {id:str(a.id,40)||uid(),name:str(a.name,60),amount:num(a.amount),debt:a.debt===true};});
+  d.goals=objs(o.goals).slice(0,60).map(function(g){return {id:str(g.id,40)||uid(),name:str(g.name,60),target:num(g.target),saved:num(g.saved),month:/^\d{4}-(0[1-9]|1[0-2])$/.test(g.month)?g.month:'',rate:Math.min(30,num(g.rate))};});
+  var em=Number(o.efMonths);d.efMonths=(em>=1&&em<=24)?Math.round(em):3;d.efSaved=num(o.efSaved);d.efCosts=num(o.efCosts);d.efPlan=(o.efPlan==null||o.efPlan==='')?null:num(o.efPlan);
+  d.payExtra=num(o.payExtra);d.nwEF=o.nwEF===true;d.nwGoals=o.nwGoals===true;
+  d.hist=objs(o.hist).slice(-60).map(function(x){return {date:str(x.date,10),assets:num(x.assets),debts:num(x.debts)};});
+  var w=o.wi||{};d.wi={start:(w.start==null||w.start==='')?null:num(w.start),monthly:(w.monthly==null||w.monthly==='')?null:num(w.monthly),rate:Math.min(30,num(w.rate)),years:Math.min(60,Math.max(1,num(w.years)||10))};
+  return d;}
+var storageOk=true;
+function load(){try{var r=lsGet(KEY);if(r)db=clean(JSON.parse(r));}catch(e){db=blank();}}
+function save(){storageOk=lsSet(KEY,JSON.stringify(db));}
+function B(){for(var i=0;i<db.budgets.length;i++)if(db.budgets[i].id===db.cur)return db.budgets[i];return db.budgets[0]||null;}
+function budgetDebtTotal(){var b=B();return b?b.debts.reduce(function(s,d){return s+d.owed;},0):0;}
+/* ---------- navigation ---------- */
+var view=null;
+function go(fn,arg){view=[fn,arg];app.textContent='';fn(arg);window.scrollTo(0,0);}
+function backBtn(label){return h('button',{class:'ghost',onclick:function(){go(home);},text:label||'Back to home'});}
+function inputRow(id,label,val,ph,type){return h('div',{class:'fld'},h('label',{for:id,text:label}),h('input',{id:id,type:type||'text',inputmode:(type?undefined:'decimal'),autocomplete:'off',maxlength:(type==='text'?'60':'14'),value:val==null?'':String(val),placeholder:ph||''}));}
+function val(id){return document.getElementById(id).value;}
+function bar(frac,neg){return h('div',{class:'bar'},h('i',{class:neg?'neg':'',style:'width:'+Math.max(0,Math.min(100,frac*100)).toFixed(1)+'%'}));}
+/* ---------- home ---------- */
+function home(){
+  app.textContent='';view=[home];
+  app.append(h('h1',{text:'Saving for Future'}),h('p',{class:'hint',text:'Plan goals, an emergency fund and your net worth (what you own minus what you owe). Everything stays on this phone.'}));
+  showNotice();
+  var b=B();
+  if(b){var lo=leftOver(b);
+    app.append(h('div',{class:'card'},h('h2',{text:'Your budget: '+b.name}),
+      h('div',{class:'row'},h('span',{text:'Coming in each month'}),h('b',{text:money(b.inc)})),
+      h('div',{class:'row'},h('span',{text:'Going out each month'}),h('b',{text:money(b.exp+b.debtPay)})),
+      h('div',{class:'row'},h('span',{text:'Left over'}),h('b',{class:lo<0?'bad':'good',text:money(lo)})),
+      b.savings>0?h('div',{class:'row'},h('span',{text:'Already set aside for savings'}),h('b',{text:money(b.savings)})):null,
+      b.savings>0?h('div',{class:'row'},h('span',{text:'Available for goals'}),h('b',{class:'good',text:money(availFor(b))})):null,
+      lo<0&&b.savings<=0?h('p',{class:'warn',text:'You spend more than you earn in this budget, so there is nothing left to save yet. Fix that in Simple Budget first.'}):null,
+      h('div',{class:'stack',style:'margin-top:12px'},h('button',{class:'ghost',onclick:chooseBudgetFile,text:'Open a newer budget file'}),h('button',{class:'ghost',onclick:function(){go(openBudget);},text:'Paste text instead'}),
+        db.budgets.length>1?h('button',{class:'ghost',onclick:function(){go(pickBudget);},text:'Switch budget'}):null,
+        h('a',{class:'btn ghost',href:BUDGET_URL,style:'display:block;text-decoration:none',text:'Open Simple Budget'}))));
+  }else{
+    app.append(h('div',{class:'card'},h('h2',{text:'Start with your budget'}),
+      h('p',{class:'hint',text:'In Simple Budget tap Save or load a backup, then Save a file to my phone. Come back here and open that file. This app only reads the numbers. It never changes your budget.'}),
+      h('div',{class:'stack'},h('button',{onclick:chooseBudgetFile,text:'Open my budget file'}),h('button',{class:'ghost',onclick:function(){go(openBudget);},text:'Paste text instead'}),
+        h('a',{class:'btn ghost',href:BUDGET_URL,style:'display:block;text-decoration:none',text:'Open Simple Budget'}),
+        h('button',{class:'ghost',onclick:function(){go(home);},text:'Skip for now'}))));
+  }
+  if(backupDue())app.append(h('div',{class:'card warn'},h('h2',{text:'Time to save a backup'}),h('p',{class:'hint',text:'Your numbers live only on this phone. Save a copy so nothing is lost if the phone is lost or reset.'}),
+    h('div',{class:'stack'},h('button',{class:'green',onclick:function(){go(backup);},text:'Save a backup now'}),h('button',{class:'ghost',onclick:function(){lsSet(SN,String(Date.now()));go(home);},text:'Remind me in 3 days'}))));
+  app.append(h('div',{class:'stack',style:'margin-bottom:14px'},
+    h('button',{onclick:function(){go(goals);},text:'Goals ('+db.goals.length+')'}),
+    h('button',{onclick:function(){go(emergency);},text:'Emergency fund'}),
+    h('button',{onclick:function(){go(netWorth);},text:'Net worth'}),
+    h('button',{onclick:function(){go(whatIf);},text:'What if I save...?'}),
+    h('button',{onclick:function(){go(payoff);},text:'Debt payoff plan'}),
+    h('button',{class:'ghost',onclick:function(){go(exportScreen);},text:'Save to Excel / CSV'}),
+    h('button',{class:'ghost',onclick:function(){go(backup);},text:'Save or load a backup'}),
+    h('a',{class:'btn ghost',href:BILLS_URL,style:'display:block;text-decoration:none;line-height:22px',text:'Bill reminders: open Simple Bills'}),
+    h('a',{class:'btn ghost',href:FAMILY_URL,style:'display:block;text-decoration:none;line-height:22px',text:'All the family money apps'})));
+  if(!storageOk)app.append(h('p',{class:'warn',text:'This phone would not keep your numbers. Use a different browser, or save a backup file.'}));
+  app.append(h('p',{class:'note',text:'Version '+VERSION+'. These are planning tools, not financial advice. Interest and returns are guesses you choose.'}));
+}
+/* ---------- opening a budget backup ---------- */
+function ingest(text,status){var o;
+  if(String(text).length>3e6){status.textContent='That file is too big to be a budget backup.';return false;}
+  try{o=JSON.parse(text);}catch(e){status.textContent='That does not look like a Simple Budget backup.';return false;}
+  if(o&&typeof o==='object'&&!Array.isArray(o)&&o.app&&o.app!=='SimpleBudget'&&o.app!=='JuniorBudget'){status.textContent=(o.app==='SavingFuture'?'That is a Saving for Future backup. Use Save or load a backup on the home screen.':'That file is not from Simple Budget.');return false;}
+  var list=Array.isArray(o)?o:(o&&Array.isArray(o.budgets)?o.budgets:null);
+  list=objs(list).filter(function(b){return Array.isArray(b.incomes);}).slice(0,20);
+  if(!list.length){status.textContent='That file had no budgets in it.';return false;}
+  var keep=JSON.stringify(db);
+  try{var first=null;list.forEach(function(b){var s=budgetSummary(b);if(!first)first=s.id;var k=-1;db.budgets.forEach(function(x,i){if(x.id===s.id)k=i;});if(k>=0)db.budgets[k]=s;else db.budgets.push(s);});
+    if(db.budgets.length>20)db.budgets=db.budgets.slice(-20);db.cur=first;save();}
+  catch(e){db=clean(JSON.parse(keep));status.textContent='Something in that file was not readable. Nothing was changed.';return false;}
+  if(!storageOk){db=clean(JSON.parse(keep));status.textContent='This phone would not keep that much data. Nothing was changed.';return false;}
+  return true;}
+function chooseBudgetFile(){var f=document.createElement('input');f.type='file';f.accept='.json,application/json,text/plain';f.style.display='none';document.body.append(f);
+  f.addEventListener('change',function(){var file=f.files&&f.files[0];f.remove();if(!file)return;var rd=new FileReader();var st={textContent:''};
+    rd.onload=function(){if(ingest(String(rd.result),st)){notice={msg:'Opened your budget.'};go(home);}else{notice={msg:st.textContent,bad:true};go(home);}};
+    rd.onerror=function(){notice={msg:'Could not read that file.',bad:true};go(home);};rd.readAsText(file);});
+  f.click();}
+function openBudget(){var st=h('div',{class:'err',role:'alert'}),ta=h('textarea',{id:'f-paste',rows:'5','aria-label':'Pasted backup text'});
+  app.append(h('h1',{text:'Paste your budget'}),h('div',{class:'card'},h('p',{class:'hint',text:'If the file button on the home screen does not work, copy the backup text in Simple Budget (Copy backup text) and paste it here.'}),ta,
+      h('div',{class:'stack',style:'margin-top:10px'},h('button',{onclick:function(){if(ingest(ta.value,st)){notice={msg:'Opened your budget.'};go(home);}},text:'Open pasted text'})),st),backBtn());}
+function pickBudget(){app.append(h('h1',{text:'Switch budget'}),h('div',{class:'stack',style:'margin-bottom:14px'},db.budgets.map(function(b){return h('button',{class:b.id===(B()||{}).id?'':'ghost',onclick:function(){db.cur=b.id;save();go(home);},text:b.name});})),backBtn());}
+/* ---------- goals ---------- */
+function goalNeeds(g){var n=monthsUntil(g.month);if(n==null)return null;return neededMonthly(g.target,g.saved,Math.max(1,n),g.rate);}
+function goals(){app.append(h('h1',{text:'Goals'}));
+  var b=B(),tot=0,past=0;
+  if(!db.goals.length)app.append(h('p',{class:'hint',text:'No goals yet. A goal is something you want to save for: a trip, a car, a down payment. Add one to see what to set aside each month.'}));
+  db.goals.forEach(function(g){var need=goalNeeds(g),done=g.target>0&&g.saved>=g.target,frac=g.target>0?g.saved/g.target:0,n=monthsUntil(g.month);if(need&&!done){if(n<0)past++;else tot+=need;}
+    app.append(h('div',{class:'card'},h('h2',{text:g.name||'Goal'}),
+      h('div',{class:'row'},h('span',{text:'Saved so far'}),h('b',{text:money(g.saved)+' of '+money(g.target)})),bar(frac),
+      done?h('p',{class:'good',style:'font-weight:700',text:'You reached this goal!'}):
+        (need==null?h('p',{class:'hint',text:'No date set.'}):h('p',{style:'margin:6px 0 10px',text:(n<0?'The date has passed. To finish now you would need ':(n===0?'This is the last month. To finish you would need ':'To finish by '+monthLabel(g.month)+', set aside about '))+money(Math.ceil(need))+(n<=0?'.':' a month.')})),
+      g.rate>0?h('p',{class:'note',text:'Counting '+g.rate+'% yearly interest, which is a guess.'}):null,
+      h('div',{class:'grid'},h('button',{onclick:function(){go(addMoney,g.id);},text:'Add money'}),h('button',{class:'ghost',onclick:function(){go(goalForm,g.id);},text:'Edit'}))));});
+  if(past>0)app.append(h('p',{class:'warn',text:past+' goal'+(past===1?' is':'s are')+' past '+(past===1?'its':'their')+' date and '+(past===1?'is':'are')+' not counted below. Tap Edit to pick a new date.'}));
+  if(db.goals.length&&tot>0){var lo=b?availFor(b):null;
+    app.append(h('div',{class:'card'+((lo!=null&&tot>lo)?' warn':'')},h('h2',{text:'All goals together'}),h('p',{style:'margin:0 0 6px',text:'About '+money(Math.ceil(tot))+' a month.'}),
+      lo==null?h('p',{class:'hint',text:'Open your budget to compare this with what you have available.'}):
+      (tot>lo?h('p',{style:'margin:0',text:'That is more than the '+money(lo)+' your budget has available. You could move a date later or lower a target.'}):h('p',{class:'good',style:'margin:0;font-weight:700',text:'That fits inside the '+money(lo)+' your budget has available.'}))));}
+  app.append(h('div',{class:'stack'},h('button',{class:'green',onclick:function(){go(goalForm,null);},text:'Add a goal'}),backBtn()));}
+function goalForm(id){var g=null;db.goals.forEach(function(x){if(x.id===id)g=x;});
+  var err=h('div',{class:'err',role:'alert'}),nm=inputRow('g-n','What are you saving for?',g?g.name:'','For example: Trip','text'),tg=inputRow('g-t','How much do you need? ($)',g&&g.target?g.target:'','0'),sv=inputRow('g-s','How much have you saved so far? ($)',g?g.saved:'0','0'),
+    mo=h('div',{class:'fld'},h('label',{for:'g-m',text:'Finish by (month and year)'}),h('input',{id:'g-m',type:'month',min:ymNow(),value:g?g.month:''})),
+    rt=inputRow('g-r','Yearly interest you expect (%), optional',g&&g.rate?g.rate:'','0');
+  app.append(h('h1',{text:g?'Edit goal':'Add a goal'}),h('div',{class:'card'},nm,tg,sv,mo,rt,err,h('div',{class:'stack'},
+    h('button',{class:'green',text:'Save goal',onclick:function(){var name=val('g-n').trim(),t=parseNum(val('g-t')),s=val('g-s').trim()===''?0:parseNum(val('g-s')),r=val('g-r').trim()===''?0:parseNum(val('g-r')),m=val('g-m');
+      if(!name){err.textContent='Give the goal a name.';return;}if(t==null||t<=0){err.textContent='Type how much you need, as a number above zero.';return;}
+      if(s==null){err.textContent='Type just a number for what you have saved.';return;}if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)||Number(m.slice(0,4))<2000){err.textContent='Pick a month and year to finish by.';return;}
+      if(m<ymNow()){err.textContent='Pick this month or a later month.';return;}
+      if(r==null||r>30){err.textContent='Interest should be a number from 0 to 30.';return;}
+      var o={id:g?g.id:uid(),name:name,target:t,saved:s,month:m,rate:r};if(g)db.goals[db.goals.indexOf(g)]=o;else db.goals.push(o);save();go(goals);}}),
+    g?h('button',{class:'danger',text:'Delete this goal',onclick:function(){go(confirmDel,g.id);}}):null,h('button',{class:'ghost',text:'Cancel',onclick:function(){go(goals);}}))));}
+function confirmDel(id){var g=null;db.goals.forEach(function(x){if(x.id===id)g=x;});if(!g){go(goals);return;}
+  app.append(h('div',{class:'card warn'},h('h2',{text:'Delete "'+g.name+'"?'}),h('p',{class:'hint',text:'This removes the goal and its saved amount from this app. Your money is not touched.'}),
+    h('div',{class:'stack'},h('button',{class:'danger',text:'Yes, delete it',onclick:function(){db.goals=db.goals.filter(function(x){return x.id!==id;});save();go(goals);}}),h('button',{class:'ghost',text:'No, keep it',onclick:function(){go(goals);}}))));}
+function addMoney(id){var g=null;db.goals.forEach(function(x){if(x.id===id)g=x;});if(!g){go(goals);return;}
+  var err=h('div',{class:'err',role:'alert'}),a=inputRow('a-amt','Amount ($)','','0');
+  function apply(sign){var v=parseNum(val('a-amt'));if(v==null||v<=0){err.textContent='Type an amount above zero.';return;}if(sign<0&&v>g.saved){err.textContent='That is more than the '+money(g.saved)+' you have saved here. Type a smaller amount.';return;}g.saved=Math.max(0,g.saved+sign*v);save();go(goals);}
+  app.append(h('h1',{text:g.name}),h('div',{class:'card'},h('p',{class:'hint',text:'Saved so far: '+money(g.saved)+'. This only changes the number in this app. Move the real money yourself.'}),a,err,
+    h('div',{class:'stack'},h('button',{class:'green',text:'Add this',onclick:function(){apply(1);}}),h('button',{class:'ghost',text:'Take this out',onclick:function(){apply(-1);}}),h('button',{class:'ghost',text:'Cancel',onclick:function(){go(goals);}}))));}
+/* ---------- emergency fund ---------- */
+function emergency(){var b=B(),costs=b?(b.exp+b.debtPay):db.efCosts,lo=b?availFor(b):null;
+  app.append(h('h1',{text:'Emergency fund'}),h('p',{class:'hint',text:'Money set aside for surprises like a job loss or a big repair. Many people aim for 3 to 6 months of what they spend.'}));
+  var mrow=h('div',{class:'grid',style:'margin-bottom:12px'},[1,3,6,9,12,24].map(function(m){return h('button',{class:m===db.efMonths?'':'ghost',onclick:function(){db.efMonths=m;save();go(emergency);},text:m+' month'+(m===1?'':'s')});}));
+  var cost=b?null:inputRow('e-cost','What you spend each month ($)',db.efCosts||'','0'),sv=inputRow('e-sv','Emergency money you have saved ($)',db.efSaved||'','0'),plan=inputRow('e-plan','How much could you put in each month? ($)',db.efPlan!=null?db.efPlan:'','0'),err=h('div',{class:'err',role:'alert'});
+  app.append(h('div',{class:'card'},h('h2',{text:'How many months?'}),mrow,
+    b?h('div',{class:'row'},h('span',{text:'Your budget spends'}),h('b',{text:money(costs)+' a month'})):cost,sv,plan,lo!=null&&lo>0?h('p',{class:'note',text:'Your budget has about '+money(lo)+' a month available for goals. Other goals use some of it.'}):null,err,
+    h('div',{class:'stack'},h('button',{class:'green',text:'Work it out',onclick:function(){var s=val('e-sv').trim()===''?0:parseNum(val('e-sv')),p=val('e-plan').trim()===''?null:parseNum(val('e-plan')),c=b?costs:(val('e-cost').trim()===''?0:parseNum(val('e-cost')));
+      if(s==null||c==null||(val('e-plan').trim()!==''&&p==null)){err.textContent='Type just numbers.';return;}db.efSaved=s;db.efPlan=p;if(!b)db.efCosts=c;save();go(emergency);}}))));
+  if(costs>0){var target=costs*db.efMonths,have=db.efSaved,covered=have/costs,gap=Math.max(0,target-have),plm=db.efPlan!=null?db.efPlan:0;
+    app.append(h('div',{class:'card'},h('h2',{text:'Where you are'}),h('div',{class:'big '+(gap===0?'good':''),text:covered.toFixed(1)+' months'}),h('p',{class:'hint',text:'of your spending is covered right now.'}),bar(target>0?have/target:0),
+      h('div',{class:'row'},h('span',{text:'Goal ('+db.efMonths+' months)'}),h('b',{text:money(target)})),h('div',{class:'row'},h('span',{text:'You have'}),h('b',{text:money(have)})),
+      h('div',{class:'row'},h('span',{text:'Still needed'}),h('b',{class:gap===0?'good':'',text:gap===0?'Done!':money(gap)})),
+      gap>0?(plm>0?h('p',{style:'margin:10px 0 0',text:'At '+money(plm)+' a month you would finish in about '+Math.ceil(gap/plm)+' month'+(Math.ceil(gap/plm)===1?'':'s')+'.'}):h('p',{class:'hint',style:'margin:10px 0 0',text:'Type a monthly amount above to see how long it would take.'})):null));}
+  app.append(backBtn());}
+/* ---------- net worth ---------- */
+function sumList(debt){return db.assets.filter(function(a){return a.debt===debt;}).reduce(function(s,a){return s+a.amount;},0);}
+function ownTotal(){return sumList(false)+(db.nwEF?db.efSaved:0)+(db.nwGoals?db.goals.reduce(function(s,g){return s+g.saved;},0):0);}
+function netWorth(){showNotice();var assets=ownTotal(),otherDebts=sumList(true),bd=budgetDebtTotal(),debts=bd+otherDebts,net=assets-debts,top=Math.max(assets,debts,1);
+  app.append(h('h1',{text:'Net worth'}),h('p',{class:'hint',text:'What you own minus what you owe. Add the things you own, like savings, a car or a home.'}),
+    h('div',{class:'card'},h('div',{class:'big '+(assets===0?'':(net<0?'bad':'good')),text:(net<0?'-':'')+money(Math.abs(net))}),h('p',{class:'hint',text:assets===0?'Add what you own below. Right now only your debts are counted, so this number looks worse than it is.':'your net worth today'}),
+      h('div',{class:'row'},h('span',{text:'You own'}),h('b',{text:money(assets)})),bar(assets/top),
+      h('div',{class:'row'},h('span',{text:'You owe'}),h('b',{text:money(debts)})),bar(debts/top,true)));
+  [false,true].forEach(function(isDebt){var items=db.assets.filter(function(a){return a.debt===isDebt;});
+    app.append(h('div',{class:'card'},h('h2',{text:isDebt?'Other debts (not in your budget)':'Things you own'}),
+      isDebt&&B()?h('p',{class:'note',text:'Debts from your budget are already counted: '+money(bd)+'.'}):null,
+      !items.length?h('p',{class:'hint',text:isDebt?'None added.':'Nothing added yet.'}):items.map(function(a){return h('div',{class:'row'},h('span',{text:a.name||'Item'}),h('span',null,h('b',{text:money(a.amount)+' '}),h('button',{class:'ghost',style:'min-height:36px;padding:4px 10px;margin-left:6px',onclick:function(){go(assetForm,a.id);},text:'Edit','aria-label':'Edit '+(a.name||'item')})));}),
+      h('div',{class:'stack',style:'margin-top:10px'},h('button',{class:'ghost',onclick:function(){go(assetForm,isDebt?'new-debt':'new-asset');},text:isDebt?'Add a debt':'Add something you own'}))));});
+  app.append(h('div',{class:'card'},h('h2',{text:'Count money from other screens'}),h('p',{class:'hint',text:'Turn these on only if you have not already added that money above.'}),
+    h('div',{class:'stack'},h('button',{class:'ghost',onclick:function(){db.nwEF=!db.nwEF;save();go(netWorth);},text:'Emergency fund savings ('+money(db.efSaved)+'): '+(db.nwEF?'counted':'not counted')}),
+      h('button',{class:'ghost',onclick:function(){db.nwGoals=!db.nwGoals;save();go(netWorth);},text:'Money saved in goals ('+money(db.goals.reduce(function(t,g){return t+g.saved;},0))+'): '+(db.nwGoals?'counted':'not counted')}))));
+  var snap=h('div',{class:'card'},h('h2',{text:'Track it over time'}),h('p',{class:'hint',text:'Save today\'s number now and then (monthly works well) to see if it is growing.'}),
+    h('div',{class:'stack'},h('button',{onclick:function(){var d=localDate();db.hist=db.hist.filter(function(x){return x.date!==d;});db.hist.push({date:d,assets:assets,debts:debts});db.hist.sort(function(a,b){return a.date<b.date?-1:1;});save();notice={msg:'Saved today\'s net worth.'};go(netWorth);},text:'Save today\'s net worth'})));
+  if(db.hist.length){var rows=db.hist.slice(-12).reverse();snap.append(h('div',{style:'margin-top:12px'},rows.map(function(x,i){var n=x.assets-x.debts,prev=rows[i+1],ch=prev?n-(prev.assets-prev.debts):null;
+    return h('div',{class:'row'},h('span',{text:dateText(x.date)}),h('span',null,h('b',{text:(n<0?'-':'')+money(Math.abs(n))}),ch==null?'':h('span',{class:ch>=0?'good':'bad',text:'  '+(ch>=0?'+':'-')+money(Math.abs(ch))})));})));}
+  app.append(snap,backBtn());}
+function assetForm(id){var a=null,isDebt=id==='new-debt';db.assets.forEach(function(x){if(x.id===id){a=x;isDebt=x.debt;}});
+  var err=h('div',{class:'err',role:'alert'}),nm=inputRow('s-n',isDebt?'What is the debt?':'What is it?',a?a.name:'',isDebt?'For example: Family loan':'For example: Savings account','text'),am=inputRow('s-a','Amount ($)',a?a.amount:'','0');
+  app.append(h('h1',{text:a?'Edit':(isDebt?'Add a debt':'Add something you own')}),h('div',{class:'card'},nm,am,err,h('div',{class:'stack'},
+    h('button',{class:'green',text:'Save',onclick:function(){var n=val('s-n').trim(),v=parseNum(val('s-a'));if(!n){err.textContent='Give it a name.';return;}if(v==null){err.textContent='Type just a number for the amount.';return;}
+      var o={id:a?a.id:uid(),name:n,amount:v,debt:isDebt};if(a)db.assets[db.assets.indexOf(a)]=o;else db.assets.push(o);save();go(netWorth);}}),
+    a?h('button',{class:'danger',text:'Remove',onclick:function(){db.assets=db.assets.filter(function(x){return x.id!==a.id;});save();go(netWorth);}}):null,
+    h('button',{class:'ghost',text:'Cancel',onclick:function(){go(netWorth);}}))));}
+/* ---------- what if ---------- */
+function whatIf(){var b=B(),lo=b?availFor(b):0,w=db.wi,startDef=db.goals.reduce(function(s,g){return s+g.saved;},0)+db.efSaved;
+  var st=w.start!=null?w.start:'',mo=w.monthly!=null?w.monthly:'';
+  app.append(h('h1',{text:'What if I save...?'}),h('p',{class:'hint',text:'See what regular saving could add up to. The yearly growth is a guess you choose. Real returns go up and down and are never guaranteed.'}),lo>0?h('p',{class:'note',text:'Your budget has about '+money(lo)+' a month available for goals.'}):null);
+  var err=h('div',{class:'err',role:'alert'});
+  app.append(h('div',{class:'card'},inputRow('w-s','Starting amount ($)',st,'0'),inputRow('w-m','Put in each month ($)',mo,'0'),inputRow('w-r','Yearly growth (%), a guess. 0 means none',w.rate||'','0'),inputRow('w-y','For how many years?',w.years,'10'),err,
+    h('div',{class:'stack'},h('button',{class:'green',text:'Work it out',onclick:function(){var s=val('w-s').trim()===''?0:parseNum(val('w-s')),m=val('w-m').trim()===''?0:parseNum(val('w-m')),r=val('w-r').trim()===''?0:parseNum(val('w-r')),y=parseNum(val('w-y'));
+      if(s==null||m==null||r==null||y==null||y<1||y>60||r>30){var r0=document.getElementById('wi-res');if(r0)r0.remove();err.textContent='Use numbers only. Years from 1 to 60, growth from 0 to 30.';return;}db.wi={start:s,monthly:m,rate:r,years:y};save();go(whatIf);}}))));
+  var s2=Number(st)||0,m2=Number(mo)||0,y=w.years,r=w.rate;
+  var end=futureValue(s2,m2,r,y),put=s2+m2*Math.round(y*12),grow=end-put;
+  var res=h('div',{id:'wi-res'});
+  if(!s2&&!m2)res.append(h('p',{class:'hint',text:'Type a starting amount or a monthly amount above, then tap Work it out.'}));
+  res.append(h('div',{class:'card'},h('h2',{text:'After '+y+' year'+(y===1?'':'s')}),h('div',{class:'big good',text:money(end)}),
+    h('div',{class:'row',style:'margin-top:8px'},h('span',{text:'You put in'}),h('b',{text:money(put)})),h('div',{class:'row'},h('span',{text:'Growth added'}),h('b',{text:money(grow)})),
+    r>0?h('p',{class:'note',text:'With no growth at all you would have '+money(put)+'.'}):h('p',{class:'note',text:'This counts no growth. Try a yearly growth number above to compare.'})));
+  var yrs=[1,5,10,20,30].filter(function(v){return v!==y;});yrs.push(y);yrs.sort(function(a,c){return a-c;});
+  res.append(h('div',{class:'card'},h('h2',{text:'Over time'}),yrs.map(function(v){return h('div',{class:'row'},h('span',{text:v+' year'+(v===1?'':'s')}),h('b',{text:money(futureValue(s2,m2,r,v))}));})));
+  app.append(res,backBtn());}
+/* ---------- debt payoff plan ---------- */
+function simulate(debts,extra,strategy){
+  var d=debts.map(function(x){return {name:x.name,bal:x.owed,apr:x.apr,pay:x.payment};}).filter(function(x){return x.bal>0.005;});
+  var order=d.slice();
+  if(strategy==='avalanche')order.sort(function(a,b){return b.apr-a.apr||a.bal-b.bal;});
+  if(strategy==='snowball')order.sort(function(a,b){return a.bal-b.bal||b.apr-a.apr;});
+  var pool=d.reduce(function(s,x){return s+x.pay;},0)+(extra||0),months=0,interest=0,paid=[];
+  while(months<1200&&d.some(function(x){return x.bal>0.005;})){
+    months++;
+    d.forEach(function(x){if(x.bal>0.005){var i=x.bal*x.apr/1200;x.bal+=i;interest+=i;}});
+    if(strategy==='none'){d.forEach(function(x){if(x.bal>0.005){x.bal-=Math.min(x.pay,x.bal);}});}
+    else{var avail=pool;
+      order.forEach(function(x){if(x.bal>0.005){var p=Math.min(x.pay,x.bal);x.bal-=p;avail-=p;}});
+      order.forEach(function(x){if(x.bal>0.005&&avail>0.005){var p=Math.min(avail,x.bal);x.bal-=p;avail-=p;}});}
+    d.forEach(function(x){if(x.bal<=0.005&&!x.done){x.done=true;x.bal=0;paid.push({name:x.name,month:months});}});}
+  var never=d.some(function(x){return x.bal>0.005;});
+  return {months:months,interest:interest,paid:paid,never:never};}
+function termText(m){var y=Math.floor(m/12),r=m%12,o=[];if(y)o.push(y+' year'+(y===1?'':'s'));if(r||!y)o.push(r+' month'+(r===1?'':'s'));return o.join(', ');}
+function payoff(){var b=B();app.append(h('h1',{text:'Debt payoff plan'}));
+  if(!b||!b.debts.length){app.append(h('div',{class:'card'},h('p',{class:'hint',text:b?'Your budget has no debts. Nothing to pay off!':'Open your budget first. This plan reads the debts you entered in Simple Budget.'}),h('div',{class:'stack'},b?null:h('button',{onclick:chooseBudgetFile,text:'Open my budget file'}))),backBtn());return;}
+  var debts=b.debts.filter(function(x){return x.owed>0;});
+  if(!debts.length){app.append(h('div',{class:'card'},h('p',{class:'hint',text:'None of your debts has a balance. Nothing to pay off!'})),backBtn());return;}
+  app.append(h('p',{class:'hint',text:'Two common ways to attack debt. Avalanche pays the highest interest rate first and usually costs the least. Snowball pays the smallest balance first, which feels good and keeps many people going. Extra money each month speeds both up.'}));
+  var bad=debts.filter(function(x){return x.payment<=x.owed*x.apr/1200;});
+  var err=h('div',{class:'err',role:'alert'}),ex=inputRow('p-x','Extra you could pay each month ($)',db.payExtra||'','0');
+  app.append(h('div',{class:'card'},h('h2',{text:'Your debts'}),debts.map(function(x){return h('div',{class:'row'},h('span',{text:x.name+' ('+x.apr+'%)'}),h('b',{text:money(x.owed)+', pay '+money(x.payment)}));}),
+    bad.length?h('p',{class:'warn',style:'margin-top:10px',text:'The payment on '+bad.map(function(x){return x.name;}).join(' and ')+' is no more than the interest each month, so the balance may never go down. Raising that payment in Simple Budget is the first fix.'}):null),
+    h('div',{class:'card'},ex,err,h('p',{class:'note',text:'Available for goals in your budget: '+money(Math.max(0,availFor(b)))+'.'}),h('div',{class:'stack'},h('button',{class:'green',text:'Work it out',onclick:function(){var v=val('p-x').trim()===''?0:parseNum(val('p-x'));if(v==null){err.textContent='Type just a number.';return;}db.payExtra=v;save();go(payoff);}}))));
+  var extra=db.payExtra||0,now=simulate(debts,0,'none'),av=simulate(debts,extra,'avalanche'),sn=simulate(debts,extra,'snowball');
+  if(extra>Math.max(0,availFor(b)))app.append(h('p',{class:'warn',text:'Your budget has '+money(Math.max(0,availFor(b)))+' available, and '+money(extra)+' is more than that. Make sure you can really afford it.'}));
+  function plan(title,r,note){return h('div',{class:'card'},h('h2',{text:title}),
+    r.never?h('p',{class:'bad',style:'font-weight:700',text:'Not paid off within 100 years at these payments.'}):h('div',{class:'big good',text:termText(r.months)}),
+    h('div',{class:'row'},h('span',{text:'Interest you would pay'}),h('b',{text:r.never?'a lot':money(r.interest)})),
+    (!now.never&&!r.never&&r!==now)?h('div',{class:'row'},h('span',{text:'Compared with now'}),h('b',{class:'good',text:'saves '+money(now.interest-r.interest)+' and '+termText(Math.max(0,now.months-r.months))})):null,
+    note?h('p',{class:'note',style:'margin-top:8px',text:note}):null);}
+  app.append(plan('Keep paying as you do now',now,'Each debt keeps its own payment.'),plan('Avalanche (highest rate first)'+(extra>0?' + '+money(extra)+' extra':''),av,extra===0?'Even with no extra, this can save money: when one debt is paid off, its payment moves to the next debt.':null),plan('Snowball (smallest balance first)'+(extra>0?' + '+money(extra)+' extra':''),sn));
+  if(!av.never&&!sn.never&&av.months===sn.months&&Math.abs(av.interest-sn.interest)<0.5)app.append(h('p',{class:'note',text:'Avalanche and snowball give the same result for your debts.'}));
+  function ord(title,r){return h('div',{class:'card'},h('h2',{text:title}),r.never?h('p',{class:'hint',text:'Some debts are not paid off, so the order cannot be shown fully.'}):null,r.paid.map(function(p,i){return h('div',{class:'row'},h('span',{text:(i+1)+'. '+p.name}),h('b',{text:'paid off in '+termText(p.month)}));}));}
+  app.append(ord('Avalanche order',av),ord('Snowball order',sn),h('p',{class:'note',text:'A planning guess using the rates and payments in your budget. Real balances and rates change. Not financial advice.'}),backBtn());}
+/* ---------- export to Excel / CSV ---------- */
+function csvCell(v){var x=String(v==null?'':v);if(/^[=+\-@\t\r]/.test(x)&&isNaN(Number(x)))x="'"+x;return /[",\r\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;}
+function csvText(rows){return '\ufeff'+rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n')+'\r\n';}
+function saveCsv(name,rows,st){try{var bl=new Blob([csvText(rows)],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(bl),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);say(st,'Saved '+name+'. Look in your Downloads or Files app. If nothing downloaded, your browser blocked it.',true);}catch(e){say(st,'Download is blocked here.',false);}}
+function csvGoals(){if(!db.goals.length)return null;var r=[['Goal','Target','Saved so far','Finish by','Yearly interest %','Monthly amount needed']];
+  db.goals.forEach(function(g){var n=goalNeeds(g);r.push([g.name,g.target,g.saved,monthLabel(g.month),g.rate,g.saved>=g.target?0:(n==null?'':Math.ceil(n))]);});return r;}
+function csvNet(){var b=B(),r=[['Type','Name','Amount']],a=0,d=0;
+  db.assets.forEach(function(x){if(!x.debt){r.push(['You own',x.name,x.amount]);a+=x.amount;}});
+  if(db.nwEF&&db.efSaved>0){r.push(['You own','Emergency fund savings',db.efSaved]);a+=db.efSaved;}
+  var gs=db.nwGoals?db.goals.reduce(function(t,g){return t+g.saved;},0):0;if(gs>0){r.push(['You own','Money saved in goals',gs]);a+=gs;}
+  db.assets.forEach(function(x){if(x.debt){r.push(['You owe',x.name,x.amount]);d+=x.amount;}});
+  if(b)b.debts.forEach(function(x){r.push(['You owe (from budget)',x.name,x.owed]);d+=x.owed;});
+  if(r.length===1)return null;r.push(['Total you own','',a],['Total you owe','',d],['Net worth','',a-d]);return r;}
+function csvHist(){if(!db.hist.length)return null;var r=[['Date','You own','You owe','Net worth']];db.hist.forEach(function(x){r.push([x.date,x.assets,x.debts,x.assets-x.debts]);});return r;}
+function csvEmergency(){var b=B(),c=b?(b.exp+b.debtPay):db.efCosts;if(!(c>0))return null;return [['Item','Value'],['Months to cover',db.efMonths],['Spent each month',Math.round(c)],['Goal amount',Math.round(c*db.efMonths)],['Saved so far',db.efSaved],['Months covered now',Math.round(db.efSaved/c*10)/10]];}
+function exportScreen(){var st=h('div',{class:'err',role:'alert'});
+  function row(title,hint,file,rows){return h('div',{class:'card'},h('h2',{text:title}),h('p',{class:'hint',text:hint}),rows?h('button',{onclick:function(){saveCsv(file,rows,st);},text:'Download the '+title.toLowerCase()+' file'}):h('p',{class:'hint',text:'Nothing to save yet.'}));}
+  app.append(h('h1',{text:'Save to Excel'}),h('p',{class:'hint',text:'These are CSV files (comma-separated values). Excel, Numbers and Google Sheets can open them, and an accountant can import them.'}),
+    row('Goals','Each goal with its target, what is saved and the monthly amount needed.','goals.csv',csvGoals()),
+    row('Net worth','Everything you own and owe, with totals.','net-worth.csv',csvNet()),
+    row('Net worth history','The snapshots you saved over time.','net-worth-history.csv',csvHist()),
+    row('Emergency fund','Your emergency fund goal and where you are.','emergency-fund.csv',csvEmergency()),st,backBtn());}
+/* ---------- backup ---------- */
+function backupJson(){return JSON.stringify({app:'SavingFuture',version:1,saved:new Date().toISOString(),data:db},null,2);}
+var BK='savingFuture.lastBackup',SN='savingFuture.snooze',FS='savingFuture.firstSeen',BK_DAYS=14;
+function daysSince(k){var t=Number(lsGet(k));return t?(Date.now()-t)/864e5:null;}
+function markBackup(){lsSet(BK,String(Date.now()));}
+function backupDue(){if(!(db.goals.length||db.assets.length||db.hist.length))return false;var sn=daysSince(SN);if(sn!=null&&sn<3)return false;var d=daysSince(BK);if(d==null)d=daysSince(FS);return d!=null&&d>=BK_DAYS;}
+function backup(){var st=h('div',{class:'err',role:'alert'}),out=h('textarea',{rows:'4',readonly:'readonly','aria-label':'Backup text'}),file=h('input',{type:'file',id:'b-file',accept:'.json,application/json,text/plain'}),ta=h('textarea',{rows:'4','aria-label':'Paste a backup here',id:'b-paste'});
+  out.value=backupJson();
+  function restore(t){var o;try{o=JSON.parse(t);}catch(e){st.textContent='That does not look like a Saving for Future backup.';return;}
+    if(!o||o.app!=='SavingFuture'||!o.data){st.textContent=(o&&(o.app==='SimpleBudget'||o.app==='JuniorBudget'))?'That is a budget file. Use Open my budget file on the home screen.':'That file is not a Saving for Future backup.';return;}
+    db=clean(o.data);save();go(home);}
+  file.addEventListener('change',function(){var f=file.files&&file.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){restore(String(rd.result));};rd.readAsText(f);});
+  app.append(h('h1',{text:'Backup'}),h('div',{class:'card'},h('h2',{text:'Save'}),h('p',{class:'hint',text:'Your numbers live only on this phone. Save a copy now and then.'}),
+    h('div',{class:'stack'},h('button',{text:'Save a file to my phone',onclick:function(){try{var bl=new Blob([backupJson()],{type:'application/json'}),u=URL.createObjectURL(bl),a=document.createElement('a');a.href=u;a.download='saving-for-future-backup.json';document.body.append(a);a.click();a.remove();markBackup();setTimeout(function(){URL.revokeObjectURL(u);},2000);say(st,'Saved. Look in your Downloads or Files app. If nothing downloaded, use the backup text below.',true);}catch(e){say(st,'Download is blocked here. Copy the text below instead.',false);}}}),
+      h('button',{class:'ghost',text:'Copy backup text',onclick:function(){out.value=backupJson();out.focus();out.select();var ok=function(){markBackup();say(st,'Copied. Paste it into the Notes app to keep it.',true);};try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(out.value).then(ok,function(){document.execCommand('copy');ok();});else{document.execCommand('copy');ok();}}catch(e){st.textContent='Select the text and copy it yourself.';}}})),
+    h('details',null,h('summary',{text:'Show the backup text (advanced)'}),out)),
+    h('div',{class:'card'},h('h2',{text:'Load'}),h('p',{class:'hint',text:'Loading a backup replaces what is in this app now.'}),h('div',{class:'fld'},h('label',{for:'b-file',text:'Choose a backup file'}),file),h('div',{class:'fld'},h('label',{for:'b-paste',text:'Or paste the text'}),ta),
+      h('div',{class:'stack'},h('button',{class:'ghost',text:'Load pasted text',onclick:function(){restore(ta.value);}})),st),backBtn());}
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
+/* ---------- app lock (optional PIN; hides the screen, does NOT encrypt the saved data) ---------- */
+var LK='savingFuture.lock',LK_IDLE=60000,lkHiddenAt=0,lkOpen=false;
+function lkOK(){return !!(window.crypto&&crypto.subtle&&window.TextEncoder);}
+function lkHex(buf){return Array.prototype.map.call(new Uint8Array(buf),function(b){return ('0'+b.toString(16)).slice(-2);}).join('');}
+function lkHash(pin,salt){var enc=new TextEncoder();
+  return crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']).then(function(k){
+    return crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode(salt),iterations:100000,hash:'SHA-256'},k,256);}).then(lkHex);}
+function lkGet(){try{var o=JSON.parse(lsGet(LK)||'null');return(o&&typeof o.salt==='string'&&typeof o.hash==='string'&&o.salt&&o.hash)?o:null;}catch(e){return null;}}
+function lkPresent(){return lsGet(LK)!==null;}
+var LKF=LK+'.fails';
+function lkFails(){try{var o=JSON.parse(lsGet(LKF)||'null');return(o&&isFinite(o.n)&&isFinite(o.until))?{n:Math.max(0,o.n|0),until:Math.max(0,+o.until)}:{n:0,until:0};}catch(e){return {n:0,until:0};}}
+function lkFailed(){var f=lkFails();f.n++;if(f.n>=5)f.until=Date.now()+Math.min(3600,30*Math.pow(2,f.n-5))*1000;lsSet(LKF,JSON.stringify(f));return f;}
+function lkClearFails(){try{localStorage.removeItem(LKF);}catch(e){}}
+function lkWait(){var f=lkFails(),s=Math.ceil((f.until-Date.now())/1000);return s>0?s:0;}
+function lkWaitText(s){return s>=60?Math.ceil(s/60)+' minute'+(Math.ceil(s/60)===1?'':'s'):s+' seconds';}
+function lkRand(){var a=new Uint8Array(16);crypto.getRandomValues(a);return lkHex(a);}
+function lkPanel(children){var old=document.getElementById('lockov');if(old)old.remove();
+  var ov=h('div',{id:'lockov',role:'dialog','aria-modal':'true',style:'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg,#f5f6f2);overflow:auto;padding:16px'},
+    h('div',{style:'max-width:480px;margin:0 auto'},children));
+  document.body.append(ov);try{app.setAttribute('inert','');}catch(e){}window.scrollTo(0,0);return ov;}
+function lkClose(){var o=document.getElementById('lockov');if(o)o.remove();lkOpen=false;try{app.removeAttribute('inert');}catch(e){}}
+function lkErase(){try{var ks=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('savingFuture.')===0)ks.push(k);}ks.forEach(function(k){localStorage.removeItem(k);});}catch(e){}
+  location.reload();}
+function lkForgot(back){lkPanel([h('div',{class:'card warn'},h('h2',{text:'Forgot your PIN?'}),
+  h('p',{class:'hint',text:'The only way back in is to erase everything this app saved on this phone, including the PIN. If you saved a backup file, you can load it again afterwards. Nobody can recover the PIN for you.'}),
+  h('div',{class:'stack'},h('button',{class:'danger',onclick:lkErase,text:'Erase everything on this phone'}),h('button',{class:'ghost',onclick:back,text:'No, go back'})))]);}
+function lkUnlockScreen(done){
+  if(lkOpen&&document.getElementById('lockov'))return;lkOpen=true;
+  var cfg=lkGet();if(!cfg){lkClose();done&&done();return;}
+  var inp=h('input',{id:'lk-pin',type:'password',autocomplete:'off',autocapitalize:'off','aria-label':'Your PIN'}),err=h('div',{class:'err',role:'alert'});
+  function show(){lkPanel([h('div',{class:'card'},h('h1',{text:'Saving for Future'}),h('p',{class:'hint',text:'This app is locked. Type your PIN.'}),
+    h('div',{class:'fld'},h('label',{for:'lk-pin',text:'PIN'}),inp),err,
+    h('div',{class:'stack'},h('button',{class:'green',onclick:go,text:'Unlock'}),h('button',{class:'ghost',onclick:function(){lkForgot(show);},text:'I forgot my PIN'})))]);
+    var w=lkWait();if(w)err.textContent='Too many wrong tries. Wait '+lkWaitText(w)+'.';
+    setTimeout(function(){try{inp.focus();}catch(e){}},50);}
+  function go(){var w=lkWait();if(w){err.textContent='Too many wrong tries. Wait '+lkWaitText(w)+'.';return;}
+    var v=inp.value;if(!v){err.textContent='Type your PIN first.';return;}
+    lkHash(v,cfg.salt).then(function(hx){if(hx===cfg.hash){lkClearFails();lkClose();done&&done();}
+      else{inp.value='';var f=lkFailed(),w2=lkWait();err.textContent=w2?'Wrong PIN. Wait '+lkWaitText(w2)+', then try again.':'That is not the right PIN.';}});}
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
+  show();}
+function lkBroken(why){lkOpen=true;lkPanel([h('div',{class:'card warn'},h('h1',{text:'Saving for Future'}),h('h2',{text:'This app is locked'}),
+  h('p',{class:'hint',text:why}),h('div',{class:'stack'},h('button',{class:'ghost',onclick:function(){location.reload();},text:'Try again'}),h('button',{class:'danger',onclick:lkErase,text:'Erase everything on this phone'})))]);}
+function lkGate(start){
+  if(!lkPresent()){start();return;}
+  if(!lkGet()){lkBroken('The lock settings on this phone are damaged, so your PIN cannot be checked. The only way in is to erase what this app saved on this phone. If you saved a backup file, you can load it again afterwards.');return;}
+  if(!lkOK()){lkBroken('A PIN is set, but this browser cannot check it here. Open the app from its normal web address, or erase what this app saved on this phone.');return;}
+  lkUnlockScreen(start);}
+function lkSetScreen(after,verifyFirst){
+  var a=h('input',{id:'lk-a',type:'password',autocomplete:'off','aria-label':'New PIN'}),b=h('input',{id:'lk-b',type:'password',autocomplete:'off','aria-label':'Type it again'}),err=h('div',{class:'err',role:'alert'});
+  lkPanel([h('div',{class:'card'},h('h2',{text:'Set a PIN'}),h('p',{class:'hint',text:'At least 4 characters. Numbers or letters. Write it down somewhere safe. Nobody can recover it for you.'}),
+    h('div',{class:'fld'},h('label',{for:'lk-a',text:'New PIN'}),a),h('div',{class:'fld'},h('label',{for:'lk-b',text:'Type it again'}),b),err,
+    h('div',{class:'stack'},h('button',{class:'green',text:'Save PIN',onclick:function(){
+      if(a.value.length<4){err.textContent='Use at least 4 characters.';return;}
+      if(a.value!==b.value){err.textContent='The two do not match.';return;}
+      var salt=lkRand();lkHash(a.value,salt).then(function(hx){lsSet(LK,JSON.stringify({salt:salt,hash:hx}));lkClose();after&&after();});}}),
+      h('button',{class:'ghost',text:'Cancel',onclick:lkClose})))]);
+  setTimeout(function(){try{a.focus();}catch(e){}},50);}
+function lkAsk(title,okLabel,onOk){var cfg=lkGet(),inp=h('input',{id:'lk-c',type:'password',autocomplete:'off','aria-label':'Your PIN'}),err=h('div',{class:'err',role:'alert'});
+  function go(){lkHash(inp.value,cfg.salt).then(function(hx){if(hx===cfg.hash){onOk();}else{inp.value='';err.textContent='That is not the right PIN.';}});}
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
+  lkPanel([h('div',{class:'card'},h('h2',{text:title}),h('div',{class:'fld'},h('label',{for:'lk-c',text:'Your PIN'}),inp),err,
+    h('div',{class:'stack'},h('button',{class:'green',text:okLabel,onclick:go}),h('button',{class:'ghost',text:'Cancel',onclick:lkClose})))]);
+  setTimeout(function(){try{inp.focus();}catch(e){}},50);}
+function lockCard(){var on=!!lkGet();
+  if(!lkOK())return h('div',{class:'card'},h('h2',{text:'Lock this app'}),h('p',{class:'hint',text:'The lock is not available in this browser.'}));
+  var kids=[h('h2',{text:on?'Lock is ON':'Lock this app'}),
+    h('p',{class:'hint',text:on?'Anyone opening this app on this phone must type your PIN first. It keeps casual snoopers out. It does not scramble what is saved, so keep your phone locked too.':'Optional. Ask for a PIN every time the app opens, so someone who picks up your phone cannot just look. It does not scramble what is saved.'})];
+  var btns=on?[h('button',{class:'ghost',text:'Lock now',onclick:function(){lkUnlockScreen(null);}}),
+      h('button',{class:'ghost',text:'Change PIN',onclick:function(){lkAsk('Change PIN','Next',function(){lkSetScreen(function(){home();});});}}),
+      h('button',{class:'ghost',text:'Turn lock off',onclick:function(){lkAsk('Turn lock off','Turn off',function(){try{localStorage.removeItem(LK);}catch(e){}lkClearFails();lkClose();home();});}})]
+    :[h('button',{class:'ghost',text:'Set a PIN',onclick:function(){lkSetScreen(function(){home();});}})];
+  return h('div',{class:'card',id:'lockcard'},kids.concat([h('div',{class:'stack'},btns)]));}
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){lkHiddenAt=Date.now();return;}
+  if(lkPresent()&&lkHiddenAt&&Date.now()-lkHiddenAt>LK_IDLE&&!document.getElementById('lockov')){if(lkGet()&&lkOK())lkUnlockScreen(null);else lkBroken('The lock settings on this phone could not be checked.');}
+  lkHiddenAt=0;});
+var lkHome0=home;home=function(){lkHome0.apply(this,arguments);app.append(lockCard());
+  var t=app.querySelector('h1');if(t&&lkOK()){var a=h('a',{href:'#lockcard',class:'note',style:'display:block;margin:0 0 10px',text:lkGet()?'PIN lock is on. Change it at the bottom.':'Want a PIN lock? Set one up at the bottom.'});
+    a.addEventListener('click',function(e){e.preventDefault();var c=document.getElementById('lockcard');if(c)c.scrollIntoView();});t.insertAdjacentElement('afterend',a);}};
+
+if(!lsGet(FS))lsSet(FS,String(Date.now()));
+lkGate(function(){load();home();});
+window.__sf={simulate:simulate,monthsUntil:monthsUntil,neededMonthly:neededMonthly,futureValue:futureValue,budgetSummary:budgetSummary,leftOver:leftOver};
+})();
+</script></body></html>
